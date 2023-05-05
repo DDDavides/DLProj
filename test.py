@@ -1,26 +1,20 @@
-import torch
-from dalle_pytorch import OpenAIDiscreteVAE, DALLE
 from tqdm import tqdm
 import argparse
 from pathlib import Path
-from tqdm import tqdm
 
 # torch
-
 import torch
 
 from einops import repeat
 
 # vision imports
-
-from PIL import Image
-from torchvision.utils import make_grid, save_image
+from torchvision.utils import save_image
 
 # dalle related classes and utils
 
+from dalle_pytorch import OpenAIDiscreteVAE, DALLE
 from dalle_pytorch import __version__
-from dalle_pytorch import DiscreteVAE, OpenAIDiscreteVAE, VQGanVAE, DALLE
-from dalle_pytorch.tokenizer import SimpleTokenizer, HugTokenizer, YttmTokenizer, ChineseTokenizer
+from dalle_pytorch.tokenizer import tokenizer, HugTokenizer, YttmTokenizer, ChineseTokenizer
 
 vae = OpenAIDiscreteVAE()       # loads pretrained OpenAI VAE
 
@@ -34,28 +28,7 @@ dalle = DALLE(
     dim_head = 64,              # attention head dimension
     attn_dropout = 0.1,         # attention dropout
     ff_dropout = 0.1            # feedforward dropout
-)
-
-import argparse
-from pathlib import Path
-from tqdm import tqdm
-
-# torch
-
-import torch
-
-from einops import repeat
-
-# vision imports
-
-from PIL import Image
-from torchvision.utils import make_grid, save_image
-
-# dalle related classes and utils
-
-from dalle_pytorch import __version__
-from dalle_pytorch import DiscreteVAE, OpenAIDiscreteVAE, VQGanVAE, DALLE
-from dalle_pytorch.tokenizer import tokenizer, HugTokenizer, YttmTokenizer, ChineseTokenizer
+).cuda()
 
 # argument parsing
 
@@ -64,16 +37,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--dalle_path', type = str, required = False,
                     help='path to your trained DALL-E')
 
-parser.add_argument('--vqgan_model_path', type=str, default = None,
-                   help='path to your trained VQGAN weights. This should be a .ckpt file. (only valid when taming option is enabled)')
-
-parser.add_argument('--vqgan_config_path', type=str, default = None,
-                   help='path to your trained VQGAN config. This should be a .yaml file.  (only valid when taming option is enabled)')
-
 parser.add_argument('--text', type = str, required = True,
                     help='your text prompt')
 
-parser.add_argument('--num_images', type = int, default = 128, required = False,
+parser.add_argument('--num_images', type = int, default = 1, required = False,
                     help='number of images')
 
 parser.add_argument('--batch_size', type = int, default = 4, required = False,
@@ -122,7 +89,7 @@ for j, text in tqdm(enumerate(texts)):
         text_tokens, gen_texts = dalle.generate_texts(tokenizer, text=text, filter_thres = args.top_k)
         text = gen_texts[0]
     else:
-        text_tokens = tokenizer.tokenize([text], dalle.text_seq_len)
+        text_tokens = tokenizer.tokenize([text], dalle.text_seq_len).cuda()
 
     text_tokens = repeat(text_tokens, '() n -> b n', b = args.num_images)
 
