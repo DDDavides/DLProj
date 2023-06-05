@@ -6,7 +6,7 @@ object around the origin. The images are saved to the output directory.
 
 Example usage:
     blender -b -P blender_script.py -- \
-        --object_path my_object.glb \
+        --objects_dir my_object.glb \
         --output_dir ./views \
         --engine CYCLES \
         --scale 0.8 \
@@ -41,7 +41,7 @@ import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--object_path",
+    "--objects_dir",
     type=str,
     required=True,
     help="Path to the object file",
@@ -52,7 +52,7 @@ parser.add_argument(
 )
 parser.add_argument("--scale", type=float, default=0.8)
 parser.add_argument("--num_images", type=int, default=8)
-parser.add_argument("--camera_dist", type=int, default=1.2)
+parser.add_argument("--camera_dist", type=float, default=1.2)
     
 argv = sys.argv[sys.argv.index("--") + 1 :]
 args = parser.parse_args(argv)
@@ -275,7 +275,8 @@ def normalize_scene():
 
 def save_images(object_file: str, writer) -> None:
     """Saves rendered images of the object in the scene."""
-    os.makedirs(args.output_dir, exist_ok=True)
+    out_dir = dir_path + args.output_dir
+    os.makedirs(out_dir, exist_ok=True)
 
     reset_scene()
 
@@ -308,13 +309,15 @@ def save_images(object_file: str, writer) -> None:
         # camera = randomize_camera()
 
         # render the image
-        render_path = os.path.join(args.output_dir, object_uid, f"{i:03d}.png")
+        render_path = os.path.join(out_dir, object_uid, f"{i:03d}.png")
         scene.render.filepath = render_path
         bpy.ops.render.render(write_still=True)
 
+        image_path = "." + args.output_dir + object_uid + f"{i:03d}.png"
+
         row = {"modelPath": object_file,
                "prompt": f"{phi} {theta}",
-               "imagePath": render_path}
+               "imagePath": image_path}
 
         writer.writerow(row, )
 
@@ -341,29 +344,39 @@ def download_object(object_url: str) -> str:
 
 
 if __name__ == "__main__":
-    try:
-        start_i = time.time()
-        if args.object_path.startswith("http"):
-            local_path = download_object(args.object_path)
-        else:
-            local_path = args.object_path
+    for object_dir in os.listdir(args.objects_dir):
+        object_dir = os.path.join(args.objects_dir, object_dir)
+        print(object_dir)
+        if not os.path.isdir(object_dir):
+            continue
+        for object_path in os.listdir(object_dir):
+            object_path = os.path.join(object_dir, object_path)
+            if not object_path.endswith(".glb"):
+                continue
 
-        if os.path.exists(datasetPath):
-            f = open(datasetPath, 'a', newline='\n')
-            # Create a dictionary writer with the dict keys as column fieldnames
-            writer = csv.DictWriter(f, fieldnames=columns)
-        else:
-            f = open(datasetPath, 'w', newline='\n')
-            writer = csv.DictWriter(f, fieldnames=columns)
-            writer.writeheader()
-        save_images(local_path, writer)
-        f.close()
+            try:
+                start_i = time.time()
+                if object_path.startswith("http"):
+                    local_path = download_object(object_path)
+                else:
+                    local_path = object_path
 
-        end_i = time.time()
-        print("Finished", local_path, "in", end_i - start_i, "seconds")
-        # delete the object if it was downloaded
-        if args.object_path.startswith("http"):
-            os.remove(local_path)
-    except Exception as e:
-        print("Failed to render", args.object_path)
-        print(e)
+                if os.path.exists(datasetPath):
+                    f = open(datasetPath, 'a', newline='\n')
+                    # Create a dictionary writer with the dict keys as column fieldnames
+                    writer = csv.DictWriter(f, fieldnames=columns)
+                else:
+                    f = open(datasetPath, 'w', newline='\n')
+                    writer = csv.DictWriter(f, fieldnames=columns)
+                    writer.writeheader()
+                save_images(local_path, writer)
+                f.close()
+
+                end_i = time.time()
+                print("Finished", local_path, "in", end_i - start_i, "seconds")
+                # delete the object if it was downloaded
+                if object_path.startswith("http"):
+                    os.remove(local_path)
+            except Exception as e:
+                print("Failed to render", object_path)
+                print(e)
