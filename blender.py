@@ -28,9 +28,16 @@ import uuid
 from typing import Tuple
 from mathutils import Vector, Matrix
 import numpy as np
+import subprocess
+import csv
 
 import bpy
 from mathutils import Vector
+
+# install packages per versione >= 2.93
+import sys
+import subprocess
+import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -96,6 +103,10 @@ bpy.context.preferences.addons["cycles"].preferences.get_devices()
 bpy.context.preferences.addons[
     "cycles"
 ].preferences.compute_device_type = "METAL" # or "OPENCL"
+
+columns = ["modelPath", "prompt", "imagePath"]
+dir_path = os.path.dirname(os.path.realpath(__file__))
+datasetPath = dir_path + "/dataset.csv"
 
 def sample_point_on_sphere(radius: float) -> Tuple[float, float, float]:
     theta = random.random() * 2 * math.pi
@@ -262,7 +273,7 @@ def normalize_scene():
     bpy.ops.object.select_all(action="DESELECT")
 
 
-def save_images(object_file: str) -> None:
+def save_images(object_file: str, writer) -> None:
     """Saves rendered images of the object in the scene."""
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -280,29 +291,38 @@ def save_images(object_file: str) -> None:
 
     randomize_lighting()
     for i in range(args.num_images):
-        # # set the camera position
-        # theta = (i / args.num_images) * math.pi * 2
-        # phi = math.radians(60)
-        # point = (
-        #     args.camera_dist * math.sin(phi) * math.cos(theta),
-        #     args.camera_dist * math.sin(phi) * math.sin(theta),
-        #     args.camera_dist * math.cos(phi),
-        # )
-        # # reset_lighting()
-        # cam.location = point
+        # set the camera position
+        # rotazione rispetto all'asse z(asse verticale)
+        theta = (i / args.num_images) * math.pi * 2
+        # inclinazione verticale
+        phi = math.radians(60)
+        point = (
+            args.camera_dist * math.sin(phi) * math.cos(theta),
+            args.camera_dist * math.sin(phi) * math.sin(theta),
+            args.camera_dist * math.cos(phi),
+        )
+        # reset_lighting()
+        cam.location = point
 
-        # set camera
-        camera = randomize_camera()
+        # # set camera
+        # camera = randomize_camera()
 
         # render the image
         render_path = os.path.join(args.output_dir, object_uid, f"{i:03d}.png")
         scene.render.filepath = render_path
         bpy.ops.render.render(write_still=True)
 
-        # save camera RT matrix
-        RT = get_3x4_RT_matrix_from_blender(camera)
-        RT_path = os.path.join(args.output_dir, object_uid, f"{i:03d}.npy")
-        np.save(RT_path, RT)
+        row = {"modelPath": object_file,
+               "prompt": f"{phi} {theta}",
+               "imagePath": render_path}
+
+        writer.writerow(row, )
+
+        # # save camera RT matrix
+        # RT = get_3x4_RT_matrix_from_blender(camera)
+        # RT_path = os.path.join(args.output_dir, object_uid, f"{i:03d}.npy")
+        # np.save(RT_path, RT)
+
 
 
 def download_object(object_url: str) -> str:
@@ -327,7 +347,18 @@ if __name__ == "__main__":
             local_path = download_object(args.object_path)
         else:
             local_path = args.object_path
-        save_images(local_path)
+
+        if os.path.exists(datasetPath):
+            f = open(datasetPath, 'a', newline='\n')
+            # Create a dictionary writer with the dict keys as column fieldnames
+            writer = csv.DictWriter(f, fieldnames=columns)
+        else:
+            f = open(datasetPath, 'w', newline='\n')
+            writer = csv.DictWriter(f, fieldnames=columns)
+            writer.writeheader()
+        save_images(local_path, writer)
+        f.close()
+
         end_i = time.time()
         print("Finished", local_path, "in", end_i - start_i, "seconds")
         # delete the object if it was downloaded
